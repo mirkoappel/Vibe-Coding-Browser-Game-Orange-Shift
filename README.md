@@ -14,7 +14,7 @@ A minimal maze survival game by Mirko Appel
 
 ## What is Orange Shift?
 
-**Orange Shift** is a lightweight, browser-based game built in pure HTML, JavaScript and CSS — no dependencies, no build tools, no nonsense.
+**Orange Shift** is a lightweight, browser-based game built with HTML, JavaScript, CSS and Three.js — no other dependencies, no build tools, just a ingle HTML-File.
 
 You are a small orange sphere.  
 You bounce through a procedurally generated maze.  
