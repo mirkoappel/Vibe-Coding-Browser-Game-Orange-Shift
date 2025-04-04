@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en"> <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Labyrinth Game (Polished Test Version)</title>
+    <style>
+        /* Basic Styles */
+        body { margin: 0; overflow: hidden; background-color: #ccc; font-family: Arial, sans-serif; }
+        canvas { display: block; }
+        /* UI Container Top Right */
+        #ui-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background-color: rgba(255, 255, 255, 0.7);
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        /* Game Stats (Score, Level, Lives) */
+        .game-stat {
+            font-size: 14px;
+            color: #333;
+            background-color: transparent;
+            padding: 0 5px;
+            white-space: nowrap;
+        }
+        #scoreDisplay { order: 1; font-weight: bold; }
+        #levelDisplay { order: 2; }
+        #livesDisplay { order: 3; }
+
+        /* Win/Game Over Overlays (Minimalist) */
+        .messageOverlay {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(255, 255, 255, 0.9);
+            color: #111;
+            padding: 25px 40px; /* Increased padding */
+            border-radius: 8px;
+            font-size: 20px;
+            font-weight: bold;
+            text-align: center;
+            z-index: 20;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            min-width: 300px;
+        }
+        .messageOverlay small {
+            display: block;
+            font-size: 13px;
+            font-weight: normal;
+            margin-top: 15px; /* More space before prompt */
+            color: #555;
+        }
+        /* Specific styling for Win Message content */
+        #winMessage .content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+         #winMessage img {
+             width: 48px; /* Larger trophy */
+             height: 48px;
+             margin-bottom: 10px; /* More space below trophy */
+         }
+        .messageOverlay .stats {
+             margin-top: 10px; /* Space above stats */
+             font-size: 14px;
+             font-weight: normal;
+             color: #333;
+             line-height: 1.5; /* Better readability */
+             text-align: left; /* Align stats left */
+             border-top: 1px solid #ddd; /* Separator */
+             padding-top: 10px; /* Space after separator */
+             width: 80%; /* Control width of stats block */
+             margin-left: auto;
+             margin-right: auto;
+        }
+        #gameOverMessage { background-color: rgba(255, 255, 255, 0.9); color: black;}
+        #gameOverMessage small { color: white; }
+        /* Style for the new restart button */
+        #restartButton {
+            display: inline-block; /* Allows margin */
+            padding: 10px 20px;
+            margin-top: 20px;
+            background-color: black;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        #restartButton:hover {
+            background-color: #333;
+        }
+
+    </style>
+</head>
+<body>
+    <div id="ui-container">
+         <div id="scoreDisplay" class="game-stat">Score: 0</div>
+         <div id="levelDisplay" class="game-stat">Level: 1</div>
+         <div id="livesDisplay" class="game-stat">Lives: 3</div>
+    </div>
+
+    <div id="winMessage" class="messageOverlay">
+        <div class="content">
+            <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/trophy.svg" alt="Trophy">
+            <span id="winLevelText" style="font-size: 22px;">Level X Cleared!</span>
+            <div class="stats" id="winStatsText">
+                Base: +----<br>
+                Time Bonus: +----<br>
+                Orange Bonus: +----<br>
+                ------------------<br>
+                Level Score: ----<br>
+                Total Score: ----
+            </div>
+            <small>(Press any key for next level)</small>
+        </div>
+    </div>
+    <div id="gameOverMessage" class="messageOverlay">Game Over!<br>
+        <button id="restartButton">Start New Game</button>
+        </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // --- Globale Variablen ---
+        let scene, camera, renderer;
+        let agents = []; let walls = [];
+        let playerAgent; let startMarker, endMarker;
+        let startPosition, endPosition;
+        let gameWon = false; let gameOver = false; let playerLives = 3;
+        let animationFrameId;
+        let readyForRestart = false; // Flag used only for Win state restart
+        let startTime = 0; let elapsedTime = 0;
+        let currentLevelIndex = 0;
+        let convertedAICount = 0;
+        let totalScore = 0;
+
+        // --- Level Definitionen (Prozedural) ---
+        const BASE_NUM_AI = 8; const NUM_AI_INCREMENT = 2;
+        const BASE_AI_SPEED_FACTOR = 0.8; const AI_SPEED_FACTOR_INCREMENT = 0.15;
+        const MAX_AI = 30; const BASE_AI_SPEED = 0.03;
+
+        // --- Physik-Parameter (Standardwerte) ---
+        const agentRadius = 0.5;
+        const playerControlForce = 0.025; const playerDamping = 0.96;
+        const playerMaxSpeed = 0.09; let playerMaxSpeedSq = playerMaxSpeed * playerMaxSpeed;
+        const playerMass = 5; const playerRestitution = 0.6;
+        const aiMass = 1; const aiRestitution = 0.6;
+        const MIN_WALL_BOUNCE_SPEED = 0.03; const AI_COLLISION_RANDOMNESS = 0.015;
+
+        // --- Konstanten für temporäres Orange ---
+        const ORANGE_DURATION = 10000; const ORANGE_BLINK_DURATION = 2000;
+        const BLINK_INTERVAL = 250;
+
+        // --- Farbdefinitionen ---
+        const playerColor = new THREE.Color(0xFFA500); const wallColor = new THREE.Color(0x111111);
+        const startZoneColor = new THREE.Color(0xFFFFFF); const endZoneColor = new THREE.Color(0xFFA500);
+        const backgroundColor = new THREE.Color(0xCCCCCC);
+        const paletteColors = [ new THREE.Color(0x111111), new THREE.Color(0xFFFFFF) ]; // KI: Schwarz, Weiß
+        const blackHex = paletteColors[0].getHex(); const whiteHex = paletteColors[1].getHex();
+        const playerColorHex = playerColor.getHex();
+        const whiteColorForBlink = paletteColors[1];
+
+        const wallHeight = 2; const wallThickness = 0.2;
+        const collisionEpsilon = 0.001;
+        const viewHeight = 20;
+        const TARGET_CELL_SIZE = 3.2;
+
+        // Steuerungs-Flags
+        const keysPressed = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+
+        // --- Scoring Konstanten ---
+        const BASE_LEVEL_POINTS_FACTOR = 250; const BASE_TIME_BONUS = 1500;
+        const TIME_PENALTY_FACTOR = 15; const POINTS_PER_ORANGE_AGENT = 75;
+
+        // --- Initialisierungsfunktion ---
+        function init() {
+            scene = new THREE.Scene(); scene.background = backgroundColor;
+            camera = new THREE.OrthographicCamera();
+            camera.position.set(0, 50, 0); camera.lookAt(scene.position);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0); scene.add(ambientLight);
+
+            setupLevel(currentLevelIndex); // Starte Level 1
+
+            window.addEventListener('resize', onWindowResize, false);
+            addGameListeners();
+            animate();
+        }
+
+        // --- Funktion zum Berechnen der Level-Parameter ---
+        function getLevelData(levelIndex) { /* ... bleibt gleich ... */ const levelNum = levelIndex + 1; const numAI = Math.min(MAX_AI, BASE_NUM_AI + levelIndex * NUM_AI_INCREMENT); const aiSpeedFactor = BASE_AI_SPEED_FACTOR + levelIndex * AI_SPEED_FACTOR_INCREMENT; return { level: levelNum, numAI: Math.floor(numAI), aiSpeedFactor }; }
+
+        // --- Funktion zum Aufbau eines Levels ---
+        function setupLevel(levelIndex) {
+            console.log(`Setting up Level ${levelIndex + 1}`);
+
+            // Alte Elemente entfernen
+            agents.forEach(agent => { scene.remove(agent); if (agent.geometry) agent.geometry.dispose(); if (agent.material) agent.material.dispose(); });
+            agents.length = 0;
+            walls.forEach(wall => scene.remove(wall));
+            walls.length = 0;
+            if (startMarker) scene.remove(startMarker);
+            if (endMarker) scene.remove(endMarker);
+            if (playerAgent) scene.remove(playerAgent);
+
+            // Leveldaten holen
+            currentLevelIndex = levelIndex;
+            const levelData = getLevelData(currentLevelIndex);
+            const currentAgentSpeed = BASE_AI_SPEED * levelData.aiSpeedFactor;
+            const currentNumAgents = levelData.numAI;
+
+            // Gittergröße berechnen
+            const aspect = (window.innerHeight === 0) ? 1 : window.innerWidth / window.innerHeight;
+            const viewWidth = viewHeight * aspect;
+            const gridRows = Math.max(3, Math.floor(viewHeight / TARGET_CELL_SIZE));
+            const gridCols = Math.max(3, Math.floor(viewWidth / TARGET_CELL_SIZE));
+            console.log(`Calculated Grid: ${gridRows}x${gridCols}`);
+
+            // Kamera anpassen
+            camera.left = viewWidth / -2; camera.right = viewWidth / 2;
+            camera.top = viewHeight / 2; camera.bottom = viewHeight / -2;
+            camera.updateProjectionMatrix();
+
+            // Neues Labyrinth etc. erstellen
+            const mazeGrid = generateMazeData(gridRows, gridCols);
+            createWallsFromGrid(mazeGrid, viewHeight, aspect);
+            createStartEndZones(mazeGrid, viewHeight, aspect);
+            createPlayerAgent();
+            createInitialAgents(currentNumAgents, currentAgentSpeed);
+
+            // Spielzustand zurücksetzen
+            gameWon = false; gameOver = false;
+            if (levelIndex === 0) {
+                playerLives = 3;
+                totalScore = 0;
+            }
+            elapsedTime = 0; convertedAICount = 0;
+            Object.keys(keysPressed).forEach(key => keysPressed[key] = false);
+            updateLivesDisplay(); updateLevelDisplay(); updateScoreDisplay();
+            document.getElementById('winMessage').style.display = 'none';
+            document.getElementById('gameOverMessage').style.display = 'none';
+
+            removeGameEndListener(); // Alte End-Listener entfernen
+            addGameListeners(); // Normale Spiel-Listener hinzufügen
+
+            startTime = performance.now();
+            cancelAnimationFrame(animationFrameId);
+            animate();
+        }
+
+
+        // --- Spiel Reset Funktion (wird nur von Button aufgerufen) ---
+        function handleGameOverRestart() {
+             console.log("Restart button clicked");
+             document.getElementById('restartButton').removeEventListener('click', handleGameOverRestart); // Listener entfernen
+             setupLevel(0); // Startet immer Level 1
+        }
+
+
+        // --- Labyrinth-Generierung ---
+        function generateMazeData(rows, cols) { /* ... bleibt gleich ... */ if (isNaN(cols) || !isFinite(cols) || cols <= 0) { console.error("Invalid column count for maze generation:", cols, ". Defaulting to 1."); cols = 1; } console.log(`Generiere Labyrinth: ${rows}x${cols}`); let grid = Array(rows).fill(null).map(() => Array(cols).fill(null).map(() => ({ visited: false, walls: { top: true, right: true, bottom: true, left: true } }))); let stack = []; let currentRow = 0; let currentCol = 0; if (currentRow >= rows || currentCol >= cols) { currentRow = Math.floor(Math.random() * rows); currentCol = Math.floor(Math.random() * cols); } grid[currentRow][currentCol].visited = true; stack.push({ r: currentRow, c: currentCol }); const dr = [-1, 0, 1, 0]; const dc = [0, 1, 0, -1]; while (stack.length > 0) { let current = stack[stack.length - 1]; let neighbors = []; for (let i = 0; i < 4; i++) { let nr = current.r + dr[i]; let nc = current.c + dc[i]; if (nr >= 0 && nr < rows && nc >= 0 && nc < cols && !grid[nr][nc].visited) neighbors.push({ r: nr, c: nc, direction: i }); } if (neighbors.length > 0) { let next = neighbors[Math.floor(Math.random() * neighbors.length)]; if (next.direction === 0) { grid[current.r][current.c].walls.top = false; grid[next.r][next.c].walls.bottom = false; } else if (next.direction === 1) { grid[current.r][current.c].walls.right = false; grid[next.r][next.c].walls.left = false; } else if (next.direction === 2) { grid[current.r][current.c].walls.bottom = false; grid[next.r][next.c].walls.top = false; } else { grid[current.r][current.c].walls.left = false; grid[next.r][next.c].walls.right = false; } grid[next.r][next.c].visited = true; stack.push({ r: next.r, c: next.c }); } else { stack.pop(); } } console.log("Labyrinth generiert."); return grid; }
+
+        // --- Wand-Erstellung aus Gitterdaten ---
+        function createWallsFromGrid(grid, viewHeightParam, aspectParam) { /* ... bleibt gleich ... */ walls.forEach(wall => scene.remove(wall)); walls.length = 0; const wallMaterial = new THREE.MeshBasicMaterial({ color: wallColor }); const rows = grid.length; if (rows === 0) return; const cols = grid[0].length; if (cols <= 0) return; const viewWidth = viewHeightParam * aspectParam; const cellHeight = viewHeightParam / rows; const cellWidth = viewWidth / cols; console.log(`Erstelle Wände für ${rows}x${cols} Gitter.`); for (let r = 0; r < rows; r++) { for (let c = 0; c < cols; c++) { const cell = grid[r][c]; const xPos = (c + 0.5) * cellWidth - viewWidth / 2; const zPos = (r + 0.5) * cellHeight - viewHeightParam / 2; const wallYPos = 0; if (cell.walls.top) { const geo = new THREE.BoxGeometry(cellWidth + wallThickness, wallHeight, wallThickness); const w = new THREE.Mesh(geo, wallMaterial); w.position.set(xPos, wallYPos, zPos - cellHeight / 2); scene.add(w); walls.push(w); } if (cell.walls.right) { const geo = new THREE.BoxGeometry(wallThickness, wallHeight, cellHeight + wallThickness); const w = new THREE.Mesh(geo, wallMaterial); w.position.set(xPos + cellWidth / 2, wallYPos, zPos); scene.add(w); walls.push(w); } if (cell.walls.bottom) { const geo = new THREE.BoxGeometry(cellWidth + wallThickness, wallHeight, wallThickness); const w = new THREE.Mesh(geo, wallMaterial); w.position.set(xPos, wallYPos, zPos + cellHeight / 2); scene.add(w); walls.push(w); } if (cell.walls.left) { const geo = new THREE.BoxGeometry(wallThickness, wallHeight, cellHeight + wallThickness); const w = new THREE.Mesh(geo, wallMaterial); w.position.set(xPos - cellWidth / 2, wallYPos, zPos); scene.add(w); walls.push(w); } } } console.log(walls.length + " Wandsegmente erstellt."); }
+
+        // --- Start- und End-ZONEN erstellen ---
+        function createStartEndZones(grid, viewHeightParam, aspectParam) { /* ... bleibt gleich ... */ const rows = grid.length; if (rows === 0) return; const cols = grid[0].length; if (cols <= 0) return; const viewWidth = viewHeightParam * aspectParam; const cellHeight = viewHeightParam / rows; const cellWidth = viewWidth / cols; startPosition = new THREE.Vector3( (0 + 0.5) * cellWidth - viewWidth / 2, 0, (0 + 0.5) * cellHeight - viewHeightParam / 2 ); endPosition = new THREE.Vector3( (cols - 1 + 0.5) * cellWidth - viewWidth / 2, 0, (rows - 1 + 0.5) * cellHeight - viewHeightParam / 2 ); const zoneDepth = 0.1; const zoneGeometry = new THREE.BoxGeometry(cellWidth, zoneDepth, cellHeight); const startZoneMaterial = new THREE.MeshBasicMaterial({ color: startZoneColor, transparent: true, opacity: 0.5 }); const endZoneMaterial = new THREE.MeshBasicMaterial({ color: endZoneColor, transparent: true, opacity: 0.7 }); startMarker = new THREE.Mesh(zoneGeometry, startZoneMaterial); startMarker.position.copy(startPosition).setY(-agentRadius - zoneDepth / 2 + 0.01); scene.add(startMarker); startMarker.name = "startZone"; endMarker = new THREE.Mesh(zoneGeometry.clone(), endZoneMaterial); endMarker.position.copy(endPosition).setY(-agentRadius - zoneDepth / 2 + 0.01); scene.add(endMarker); endMarker.name = "endZone"; }
+
+        // --- Spieler-Agent erstellen ---
+        function createPlayerAgent() { /* ... bleibt gleich ... */ const geometry = new THREE.SphereGeometry(agentRadius, 32, 32); const material = new THREE.MeshBasicMaterial({ color: playerColor }); playerAgent = new THREE.Mesh(geometry, material); playerAgent.position.copy(startPosition); playerAgent.userData.velocity = new THREE.Vector3(0,0,0); scene.add(playerAgent); }
+
+        // --- Spieler zurücksetzen (nur Position/Velocity) ---
+        function resetPlayerPosition() { if (playerAgent && startPosition) { playerAgent.position.copy(startPosition); playerAgent.userData.velocity.set(0, 0, 0); } }
+
+        // --- Spieler verliert Leben ---
+        function playerLosesLife() { if (gameOver || gameWon) return; playerLives--; updateLivesDisplay(); console.log("Leben verbleibend:", playerLives); if (playerLives <= 0) { triggerGameOver(); } else { resetPlayerPosition(); } }
+
+        // --- Game Over auslösen ---
+        function triggerGameOver() {
+            if (gameOver || gameWon) return;
+            console.log("Game Over!");
+            gameOver = true;
+            document.getElementById('gameOverMessage').style.display = 'block';
+            removeGameListeners(); // Normale Steuerung entfernen
+            // NEU: Event Listener für den Button hinzufügen
+            document.getElementById('restartButton').addEventListener('click', handleGameOverRestart);
+        }
+
+        // --- Anzeigen aktualisieren ---
+        function updateLivesDisplay() { document.getElementById('livesDisplay').innerText = `Lives: ${playerLives}`; } // Übersetzt
+        function updateLevelDisplay() { document.getElementById('levelDisplay').innerText = `Level: ${currentLevelIndex + 1}`; } // Übersetzt
+        function updateScoreDisplay() { document.getElementById('scoreDisplay').innerText = `Score: ${totalScore}`; } // Übersetzt
+
+
+        // --- KI-Agenten erstellen ---
+        function createInitialAgents(num, speed) { console.log(`Creating ${num} AI agents with speed ${speed.toFixed(3)}`); for (let i = 0; i < num; i++) { spawnAIAgent(true, speed); } } // Übersetzt
+
+        // --- Hilfsfunktion zur Prüfung einer Position ---
+        function isPositionValid(pos, radius) { /* ... bleibt gleich ... */ const agentBox = new THREE.Box3().setFromCenterAndSize( pos, new THREE.Vector3(radius * 2, radius * 2, radius * 2) ); for (const wall of walls) { const wallBox = new THREE.Box3().setFromObject(wall); if (agentBox.intersectsBox(wallBox)) return false; } if (startMarker) { const startBox = new THREE.Box3().setFromObject(startMarker); if (agentBox.intersectsBox(startBox)) return false;} if (endMarker) { const endBox = new THREE.Box3().setFromObject(endMarker); if (agentBox.intersectsBox(endBox)) return false;} return true; }
+
+        // --- KI-Agent spawnen (mit Initialisierung für temporäres Orange) ---
+        function spawnAIAgent(randomPosition = true, speed) {
+            const geometry = new THREE.SphereGeometry(agentRadius, 32, 32);
+            const startColor = paletteColors[Math.floor(Math.random() * paletteColors.length)];
+            const material = new THREE.MeshBasicMaterial({ color: startColor.clone() });
+            const agent = new THREE.Mesh(geometry, material);
+            let agentPosition; let attempts = 0; const maxAttempts = 50;
+            const minX = camera.left + agentRadius; const maxX = camera.right - agentRadius;
+            const minZ = camera.bottom + agentRadius; const maxZ = camera.top - agentRadius;
+            do { agentPosition = new THREE.Vector3( THREE.MathUtils.randFloat(minX, maxX), 0, THREE.MathUtils.randFloat(minZ, maxZ) ); attempts++; }
+            while (!isPositionValid(agentPosition, agentRadius) && attempts < maxAttempts);
+            if (attempts >= maxAttempts) { console.warn("AI: Could not find valid spawn position."); agentPosition.set(0, 0, 0); if (!isPositionValid(agentPosition, agentRadius)) { console.error("AI: Center is blocked!"); geometry.dispose(); material.dispose(); return; } }
+            agent.position.copy(agentPosition);
+            const angle = Math.random() * Math.PI * 2;
+            agent.userData.velocity = new THREE.Vector3( Math.cos(angle) * speed, 0, Math.sin(angle) * speed );
+            agent.userData.isTemporarilyOrange = false;
+            agent.userData.orangeStartTime = 0;
+            agents.push(agent); scene.add(agent);
+         }
+
+
+        // --- Tastatur-Handler ---
+        function handleKeyDown(event) { if (keysPressed.hasOwnProperty(event.key)) keysPressed[event.key] = true; }
+        function handleKeyUp(event) { if (keysPressed.hasOwnProperty(event.key)) keysPressed[event.key] = false; }
+
+        // --- Listener für Neustart (nach Win) ---
+        function handleNextLevelKey(event) {
+            if (!readyForRestart) return;
+            console.log("Next level key pressed");
+             let nextLevel = currentLevelIndex + 1;
+             // Optional: Endlosschleife oder Endbildschirm
+             // if (nextLevel >= levels.length) {
+             //     console.log("All levels completed! Restarting from Level 1.");
+             //     nextLevel = 0;
+             // }
+             setupLevel(nextLevel);
+             removeGameEndListener(); // Listener entfernen nach Aktion
+        }
+        function handleWinKeyUp(event){ // Eigener KeyUp für Win-Screen
+            readyForRestart = true;
+            window.removeEventListener('keyup', handleWinKeyUp);
+        }
+
+        // --- Hilfsfunktionen für Listener ---
+        function addGameListeners() { window.addEventListener('keydown', handleKeyDown); window.addEventListener('keyup', handleKeyUp); }
+        function removeGameListeners() { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); }
+        function addGameEndListener() { // Wird jetzt für Win und Game Over unterschiedlich genutzt
+             readyForRestart = false; // Zurücksetzen
+             // Nur für Win den Key-Listener hinzufügen
+             if (gameWon) {
+                window.addEventListener('keyup', handleWinKeyUp);
+                window.addEventListener('keydown', handleNextLevelKey);
+             }
+             // Für Game Over wird der Button-Listener in triggerGameOver hinzugefügt
+        }
+         function removeGameEndListener() { // Entfernt alle möglichen End-Listener
+             window.removeEventListener('keyup', handleWinKeyUp);
+             window.removeEventListener('keydown', handleNextLevelKey);
+             const restartBtn = document.getElementById('restartButton');
+             if(restartBtn) restartBtn.removeEventListener('click', handleGameOverRestart);
+         }
+
+
+        // --- Animationsschleife ---
+        function animate() {
+            animationFrameId = requestAnimationFrame(animate);
+            if (gameWon || gameOver) { return; } // Spielende pausiert Logik
+            updatePlayerPosition();
+            moveAgents();
+            updateAIAgentStates();
+            checkCollisions();
+            renderer.render(scene, camera);
+         }
+
+        // --- Spielerposition aktualisieren ---
+        function updatePlayerPosition() { /* ... bleibt gleich ... */ if (!playerAgent) return; const acceleration = new THREE.Vector3(0, 0, 0); if (keysPressed.ArrowUp) acceleration.z -= playerControlForce; if (keysPressed.ArrowDown) acceleration.z += playerControlForce; if (keysPressed.ArrowLeft) acceleration.x -= playerControlForce; if (keysPressed.ArrowRight) acceleration.x += playerControlForce; playerAgent.userData.velocity.add(acceleration); playerAgent.userData.velocity.multiplyScalar(playerDamping); if (playerAgent.userData.velocity.lengthSq() < 0.00001) { playerAgent.userData.velocity.set(0, 0, 0); } if (playerAgent.userData.velocity.lengthSq() > playerMaxSpeedSq) { playerAgent.userData.velocity.normalize().multiplyScalar(playerMaxSpeed); } if (playerAgent.userData.velocity.lengthSq() === 0) return; const potentialPosition = playerAgent.position.clone().add(playerAgent.userData.velocity); let collisionOccurred = false; const playerRadiusVec = new THREE.Vector3(agentRadius, agentRadius, agentRadius); const playerBox = new THREE.Box3().setFromCenterAndSize(potentialPosition, playerRadiusVec.multiplyScalar(2)); for (const wall of walls) { const wallBox = new THREE.Box3().setFromObject(wall); if (playerBox.intersectsBox(wallBox)) { collisionOccurred = true; const overlapX = Math.min(playerBox.max.x, wallBox.max.x) - Math.max(playerBox.min.x, wallBox.min.x); const overlapZ = Math.min(playerBox.max.z, wallBox.max.z) - Math.max(playerBox.min.z, wallBox.min.z); if (overlapX < overlapZ) { const pushSign = Math.sign(playerAgent.position.x - wall.position.x) || 1; playerAgent.position.x += pushSign * (overlapX + collisionEpsilon); if (Math.sign(playerAgent.userData.velocity.x) !== Math.sign(pushSign)) { playerAgent.userData.velocity.x *= -playerRestitution; } else { playerAgent.userData.velocity.x = 0; } } else { const pushSign = Math.sign(playerAgent.position.z - wall.position.z) || 1; playerAgent.position.z += pushSign * (overlapZ + collisionEpsilon); if (Math.sign(playerAgent.userData.velocity.z) !== Math.sign(pushSign)) { playerAgent.userData.velocity.z *= -playerRestitution; } else { playerAgent.userData.velocity.z = 0; } } break; } } if (!collisionOccurred) { playerAgent.position.copy(potentialPosition); } if (endMarker && !gameWon) { const playerCollider = new THREE.Box3().setFromObject(playerAgent); const endZoneBox = new THREE.Box3().setFromObject(endMarker); if (playerCollider.intersectsBox(endZoneBox)) winGame(); } }
+
+        // --- Spiel gewonnen ---
+        function winGame() {
+            if (gameOver || gameWon) return;
+            console.log("Level " + (currentLevelIndex + 1) + " Cleared!"); // Übersetzt
+            const endTime = performance.now();
+            elapsedTime = (endTime - startTime) / 1000;
+            gameWon = true;
+
+            convertedAICount = agents.filter(agent => agent.material.color.getHex() === playerColorHex).length;
+            const levelBasePoints = (currentLevelIndex + 1) * BASE_LEVEL_POINTS_FACTOR;
+            const timeBonus = Math.max(0, BASE_TIME_BONUS - Math.floor(elapsedTime * TIME_PENALTY_FACTOR));
+            const orangeBonus = POINTS_PER_ORANGE_AGENT * convertedAICount;
+            const levelScore = levelBasePoints + timeBonus + orangeBonus;
+            totalScore += levelScore;
+
+            updateScoreDisplay();
+
+            const winMessageElement = document.getElementById('winMessage');
+            const winStatsElement = document.getElementById('winStatsText');
+            // Englische Texte
+            document.getElementById('winLevelText').innerText = `Level ${currentLevelIndex + 1} Cleared!`;
+            winStatsElement.innerHTML = `
+                Base: +${levelBasePoints}<br>
+                Time Bonus: +${timeBonus}<br>
+                Orange Bonus: +${orangeBonus} (${convertedAICount} orbs)<br>
+                ------------------<br>
+                Level Score: ${levelScore}<br>
+                Total Score: ${totalScore}
+            `;
+            // Englischer Prompt
+            winMessageElement.querySelector('small').innerText = "(Press any key for next level)";
+            winMessageElement.style.display = 'block';
+            removeGameListeners();
+            addGameEndListener();
+        }
+
+        // --- KI-Status aktualisieren (Timer, Blinken, Reset zu Weiß) ---
+        function updateAIAgentStates() { /* ... bleibt gleich ... */ const now = performance.now(); agents.forEach(agent => { if (agent.userData && agent.userData.isTemporarilyOrange) { const orangeTime = now - agent.userData.orangeStartTime; const blinkStartTime = ORANGE_DURATION - ORANGE_BLINK_DURATION; if (orangeTime > ORANGE_DURATION) { agent.material.color.copy(paletteColors[1]); agent.userData.isTemporarilyOrange = false; agent.userData.orangeStartTime = 0; agent.visible = true; } else if (orangeTime > blinkStartTime) { const timeInBlink = orangeTime - blinkStartTime; const isOrange = Math.floor(timeInBlink / BLINK_INTERVAL) % 2 === 0; agent.material.color.copy(isOrange ? playerColor : whiteColorForBlink); agent.visible = true; } else { agent.material.color.copy(playerColor); agent.visible = true; } } else { agent.visible = true; } }); }
+
+        // --- KI-Agentenbewegung ---
+        function moveAgents() { /* ... bleibt gleich ... */ const minXb = camera.left + agentRadius; const maxXb = camera.right - agentRadius; const minZb = camera.bottom + agentRadius; const maxZb = camera.top - agentRadius; const startZoneBox = startMarker ? new THREE.Box3().setFromObject(startMarker) : null; const endZoneBox = endMarker ? new THREE.Box3().setFromObject(endMarker) : null; const levelData = getLevelData(currentLevelIndex); const currentAgentSpeed = BASE_AI_SPEED * levelData.aiSpeedFactor; agents.forEach(agent => { if (agent.userData.velocity.lengthSq() === 0) { const angle = Math.random() * Math.PI * 2; agent.userData.velocity.set( Math.cos(angle) * currentAgentSpeed, 0, Math.sin(angle) * currentAgentSpeed ); } else { agent.userData.velocity.setLength(currentAgentSpeed); } const potentialPosition = agent.position.clone().add(agent.userData.velocity); let collisionOccurred = false; const agentRadiusVec = new THREE.Vector3(agentRadius, agentRadius, agentRadius); const agentBox = new THREE.Box3().setFromCenterAndSize( potentialPosition, agentRadiusVec.multiplyScalar(2) ); if ((startZoneBox && agentBox.intersectsBox(startZoneBox)) || (endZoneBox && agentBox.intersectsBox(endZoneBox))) { collisionOccurred = true; agent.userData.velocity.negate(); } else { for (const wall of walls) { const wallBox = new THREE.Box3().setFromObject(wall); if (agentBox.intersectsBox(wallBox)) { collisionOccurred = true; const overlapX = Math.min(agentBox.max.x, wallBox.max.x) - Math.max(agentBox.min.x, wallBox.min.x); const overlapZ = Math.min(agentBox.max.z, wallBox.max.z) - Math.max(agentBox.min.z, wallBox.min.z); if (overlapX < overlapZ) { const pushSign = Math.sign(agent.position.x - wall.position.x) || 1; agent.position.x += pushSign * (overlapX + collisionEpsilon); if (Math.sign(agent.userData.velocity.x) !== Math.sign(pushSign)) { agent.userData.velocity.x *= -aiRestitution; } else { agent.userData.velocity.x = 0; } } else { const pushSign = Math.sign(agent.position.z - wall.position.z) || 1; agent.position.z += pushSign * (overlapZ + collisionEpsilon); if (Math.sign(agent.userData.velocity.z) !== Math.sign(pushSign)) { agent.userData.velocity.z *= -aiRestitution; } else { agent.userData.velocity.z = 0; } } agent.userData.velocity.add(new THREE.Vector3((Math.random()-0.5)*AI_COLLISION_RANDOMNESS, 0, (Math.random()-0.5)*AI_COLLISION_RANDOMNESS)); break; } } } if (!collisionOccurred) { agent.position.copy(potentialPosition); } else { agent.userData.velocity.setLength(currentAgentSpeed); } if (agent.position.x > maxXb || agent.position.x < minXb) { agent.userData.velocity.x *= -1; agent.position.x = THREE.MathUtils.clamp(agent.position.x, minXb, maxXb); } if (agent.position.z > maxZb || agent.position.z < minZb) { agent.userData.velocity.z *= -1; agent.position.z = THREE.MathUtils.clamp(agent.position.z, minZb, maxZb); } }); }
+
+        // --- Kollisionserkennung (KI-KI und Spieler-KI) ---
+        function checkCollisions() { /* ... bleibt gleich ... */ for (let i = 0; i < agents.length; i++) { const agentA = agents[i]; if (!agentA) continue; for (let j = i + 1; j < agents.length; j++) { const agentB = agents[j]; if (!agentB) continue; const distance = agentA.position.distanceTo(agentB.position); const minDistance = agentRadius * 2; if (distance < minDistance) handleCollisionKI(agentA, agentB, distance, minDistance); } if (playerAgent && !gameWon && !gameOver) { const distance = playerAgent.position.distanceTo(agentA.position); const minDistance = agentRadius * 2; if (distance < minDistance) { const kiColorHex = agentA.material.color.getHex(); if (kiColorHex === blackHex) { console.log("Collision Player <-> BLACK AI!"); playerLosesLife(); } else { if (kiColorHex === whiteHex) { console.log("Collision Player <-> WHITE AI! -> Becomes Orange"); agentA.material.color.copy(playerColor); agentA.userData.isTemporarilyOrange = true; agentA.userData.orangeStartTime = performance.now(); } else { console.log("Collision Player <-> ORANGE AI!"); } handleAgentBounce(playerAgent, agentA, distance, minDistance); } } } } }
+
+        // --- Kollisionsbehandlung (Nur KI <-> KI) ---
+        function handleCollisionKI(agentA, agentB, distance, minDistance) { /* ... bleibt gleich ... */ const colorA = agentA.material.color; const colorB = agentB.material.color; const colorHexA = colorA.getHex(); const colorHexB = colorB.getHex(); let performColorChange = true; const now = performance.now(); if (colorHexA === playerColorHex || colorHexB === playerColorHex) { if (colorHexA === playerColorHex && colorHexB === playerColorHex) { performColorChange = false; } else { if (colorHexA !== playerColorHex && colorHexB === playerColorHex) { agentA.material.color.copy(playerColor); agentA.userData.isTemporarilyOrange = true; agentA.userData.orangeStartTime = now; } else if (colorHexB !== playerColorHex && colorHexA === playerColorHex) { agentB.material.color.copy(playerColor); agentB.userData.isTemporarilyOrange = true; agentB.userData.orangeStartTime = now; } performColorChange = false; } } if (performColorChange) { if (colorA.equals(colorB)) { const otherColor = (colorHexA === blackHex) ? paletteColors[1] : paletteColors[0]; agentA.material.color.copy(otherColor); agentB.material.color.copy(otherColor); agentA.userData.isTemporarilyOrange = false; agentA.userData.orangeStartTime = 0; agentB.userData.isTemporarilyOrange = false; agentB.userData.orangeStartTime = 0; } else { const targetColor = (Math.random() < 0.5) ? paletteColors[0] : paletteColors[1]; agentA.material.color.copy(targetColor); agentB.material.color.copy(targetColor); agentA.userData.isTemporarilyOrange = false; agentA.userData.orangeStartTime = 0; agentB.userData.isTemporarilyOrange = false; agentB.userData.orangeStartTime = 0; } } handleAgentBounce(agentA, agentB, distance, minDistance); const currentAgentSpeed = BASE_AI_SPEED * getLevelData(currentLevelIndex).aiSpeedFactor; agentA.userData.velocity.add(new THREE.Vector3((Math.random()-0.5)*AI_COLLISION_RANDOMNESS, 0, (Math.random()-0.5)*AI_COLLISION_RANDOMNESS)); agentA.userData.velocity.setLength(currentAgentSpeed); agentB.userData.velocity.add(new THREE.Vector3((Math.random()-0.5)*AI_COLLISION_RANDOMNESS, 0, (Math.random()-0.5)*AI_COLLISION_RANDOMNESS)); agentB.userData.velocity.setLength(currentAgentSpeed); }
+
+         // --- Allgemeine Abprall-Behandlung ---
+         function handleAgentBounce(agent1, agent2, distance, minDistance) { /* ... bleibt gleich ... */ const overlap = minDistance - distance; const normal = agent2.position.clone().sub(agent1.position).normalize(); const correction1 = normal.clone().multiplyScalar(-overlap / 2); const correction2 = normal.clone().multiplyScalar(overlap / 2); agent1.position.add(correction1); agent2.position.add(correction2); const v1 = agent1.userData.velocity.clone(); const v2 = agent2.userData.velocity.clone(); const relativeVelocityNormal = v1.clone().sub(v2).dot(normal); if (relativeVelocityNormal > 0) { const mass1 = (agent1 === playerAgent) ? playerMass : aiMass; const mass2 = (agent2 === playerAgent) ? playerMass : aiMass; const restitution1 = (agent1 === playerAgent) ? playerRestitution : aiRestitution; const restitution2 = (agent2 === playerAgent) ? playerRestitution : aiRestitution; const avgRestitution = (restitution1 + restitution2) / 2; const totalMass = mass1 + mass2; const impulseScale = ((1 + avgRestitution) * relativeVelocityNormal) / totalMass; const impulse1 = normal.clone().multiplyScalar(impulseScale * mass2); const impulse2 = normal.clone().multiplyScalar(impulseScale * mass1); agent1.userData.velocity.sub(impulse1); agent2.userData.velocity.add(impulse2); } }
+
+        // --- Fenstergrößenänderung ---
+        function onWindowResize() { /* ... bleibt gleich ... */ const aspect = window.innerWidth / window.innerHeight; camera.left = viewHeight * aspect / -2; camera.right = viewHeight * aspect / 2; camera.top = viewHeight / 2; camera.bottom = viewHeight / -2; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); console.warn("Window resized. Maze layout remains fixed."); } // Übersetzt
+
+        // --- Start ---
+        window.onload = function() { init(); };
+
+    </script>
+</body>
+</html>
