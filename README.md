@@ -1,18 +1,18 @@
-# 🟠 ORANGE SHIFT  
-_A minimal maze survival game by Mirko Appel
+# ORANGE SHIFT  
+A minimal maze survival game by Mirko Appel
 
-![Orange Shift Banner](https://via.placeholder.com/800x200?text=Orange+Shift) <!-- Optional: später ersetzen -->
+![Orange Shift](banner.png)
 
 ---
 
-## 🎮 Play Now
+## Play Now
 
 👉 **[Click here to play Orange Shift](https://your-github-username.github.io/orange-shift/)**  
 *(GitHub Pages link — replace once deployed)*
 
 ---
 
-## ✨ What is Orange Shift?
+## What is Orange Shift?
 
 **Orange Shift** is a lightweight, browser-based game built in pure HTML, JavaScript and CSS — no dependencies, no build tools, no nonsense.
 
@@ -25,7 +25,7 @@ Every orange shift changes the balance.
 
 ---
 
-## 🧠 Backstory
+## Backstory
 
 > _No one knows why they turned orange._  
 > _Maybe it was a glitch in the system._  
@@ -35,7 +35,7 @@ Every orange shift changes the balance.
 
 ---
 
-## 🛠️ How to Play
+## How to Play
 
 | Action              | Key                    |
 |---------------------|------------------------|
@@ -51,11 +51,9 @@ Every orange shift changes the balance.
 
 ---
 
-## 🧪 Origin & Context
+## Origin & Context
 
-Orange Shift was created as part of a **Vibe Coding Experiment** with **Gemini 2.5 Pro (Canvas Mode)** — an interface that lets humans and AI build ideas *together* in real time.
-
-I (👋 [Mirko Appel](https://www.linkedin.com/in/mirko-appel/)) am an **innovation consultant and AI trainer**, helping brands and communicators explore creative applications of artificial intelligence.
+Orange Shift was created as part of a Vibe Coding Experiment with Gemini 2.5 Pro (Canvas Mode) — an interface that enables humans and AI to build ideas together in real time. The game was developed by Mirko Appel, an innovation consultant and AI trainer helping brands and communicators explore creative applications of artificial intelligence.
 
 This project was a playful exploration of:
 - Conversational coding with a language model
@@ -64,7 +62,7 @@ This project was a playful exploration of:
 
 ---
 
-## 💬 Feedback & Contact
+## Feedback & Contact
 
 I'd love to hear your thoughts, ideas, or remix suggestions!  
 Feel free to reach out via [LinkedIn](https://www.linkedin.com/in/mirko-appel/) or open an issue here on GitHub.
@@ -73,7 +71,7 @@ If you enjoyed playing, please ⭐️ the repo!
 
 ---
 
-## 📁 Tech Stack
+## Tech Stack
 
 - HTML5 + CSS3
 - [Three.js](https://threejs.org/) for simple 3D rendering
@@ -81,11 +79,11 @@ If you enjoyed playing, please ⭐️ the repo!
 
 ---
 
-## 🔖 License
+## License
 
 MIT License – free to play, fork, remix or extend.
 
 ---
 
-> _"Initiate Orange Shift."_  
-> _– The Maze is waiting._
+> "Initiate Orange Shift."  
+> – The Maze is waiting.
