@@ -52,7 +52,7 @@ Every orange shift changes the balance.
 
 ## Origin & Context
 
-Orange Shift was created as part of a Vibe Coding Experiment with Gemini 2.5 Pro (Canvas Mode) — an interface that enables humans and AI to build ideas together in real time. The game was developed by Mirko Appel, an innovation consultant and AI trainer helping brands and communicators explore creative applications of artificial intelligence.
+Orange Shift was created as part of a Vibe Coding Experiment with Gemini 2.5 Pro (Canvas Mode) — an interface that enables humans and AI to build ideas together in real time. The game was developed by [Mirko Appel](https://www.linkedin.com/in/mirko-appel/), an innovation consultant and AI trainer helping brands and communicators explore creative applications of artificial intelligence.
 
 This project was a playful exploration of:
 - Conversational coding with a language model
