@@ -72,7 +72,7 @@ If you enjoyed playing, please ⭐️ the repo!
 
 ## Tech Stack
 
-- HTML5 + CSS3
+- HTML5 + CSS3 + JavaScript
 - [Three.js](https://threejs.org/) for simple 3D rendering
 - Zero libraries or frameworks beyond that
 
