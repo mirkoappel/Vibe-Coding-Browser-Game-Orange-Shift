@@ -1,5 +1,5 @@
 # ORANGE SHIFT  
-A minimal maze survival game by [Mirko Appel](https://www.linkedin.com/in/mirko-appel/)
+A minimal maze survival game by [Mirko Appel](https://www.linkedin.com/in/mirko-appel/) 
 
 ![Orange Shift](banner.png)
 
