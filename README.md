@@ -7,7 +7,7 @@ A minimal maze survival game by [Mirko Appel](https://www.linkedin.com/in/mirko-
 
 ## Play Now
 
-👉 **[Click here to play ORANGE SHIFT in your Desktop Browser](https://mirkoappel.github.io/orangeshift/)**
+👉 **[Click here to play ORANGE SHIFT in your Desktop Browser](https://mirkoappel.github.io/Vibe-Coding-Browser-Game-Orange-Shift/)**
 
 ---
 
